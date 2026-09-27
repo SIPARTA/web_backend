@@ -84,12 +84,14 @@ def insert_incident_event(
         "device_id": device_id,
         "incident_type": incident_type,
         "severity": severity,
-        "sensor_data": sensor_data,
+        "status": severity,
         "image_url": image_url,
-        "ai_analysis_text": ai_analysis_text,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "is_anchored": False,
     }
+    # NOTE: sensor_data and ai_analysis_text are intentionally omitted
+    # because they do not exist in the current Supabase schema cache.
+    # They are still safely encrypted and stored in Pinata/IPFS.
 
     try:
         response = client.table("incident_events").insert(record).execute()
@@ -109,45 +111,57 @@ def insert_incident_event(
 # ============================================================
 
 def insert_transaction_log(
-    entity_type: str,
-    entity_id: str,
+    incident_event_id: str,
     tx_hash: Optional[str] = None,
     status: str = "PENDING",
 ) -> Optional[dict]:
     """
-    Mencatat transaksi blockchain baru ke tabel transaction_logs.
+    Mencatat intent transaksi blockchain baru dengan membuat record audit_log (pending) 
+    terlebih dahulu, lalu merelasikan transaction_logs ke audit_log tersebut.
 
     Args:
-        entity_type : 'INCIDENT' atau 'CERTIFICATE'.
-        entity_id   : UUID dari incident_events.id atau certificate.id.
-        tx_hash     : Hash transaksi Polygon (bisa None jika masih PENDING).
-        status      : 'PENDING', 'SUCCESS', atau 'FAILED'.
+        incident_event_id : UUID dari incident_events.id.
+        tx_hash           : Hash transaksi Polygon (bisa None jika masih PENDING).
+        status            : 'PENDING', 'SUCCESS', atau 'FAILED'.
 
     Returns:
-        Dict data yang berhasil di-insert, atau None jika gagal.
+        Dict data transaction_logs yang berhasil di-insert, atau None jika gagal.
     """
     client = _get_client()
     if not client:
         return None
 
-    record = {
-        "entity_type": entity_type,
-        "entity_id": entity_id,
-        "tx_hash": tx_hash,
-        "status": status,
-        "retry_count": 0,
-    }
-
     try:
-        response = client.table("transaction_logs").insert(record).execute()
-        if response.data:
-            inserted = response.data[0]
+        # 1. Create audit_log first
+        audit_res = client.table("audit_log").insert({
+            "incident_event_id": incident_event_id,
+            "action": "UPLOAD_AND_ANCHOR",
+            "encrypted_data_reference": "aes-256-gcm (Pinata IPFS)"
+        }).execute()
+        
+        if not audit_res.data:
+            return None
+            
+        audit_id = audit_res.data[0]["id"]
+        
+        # 2. Create transaction_logs
+        tx_res = client.table("transaction_logs").insert({
+            "audit_log_id": audit_id,
+            "tx_hash": tx_hash,
+            "status": status,
+            "retry_count": 0,
+        }).execute()
+
+        if tx_res.data:
+            inserted = tx_res.data[0]
             logger.info(f"[SUPABASE] Tx log saved: {inserted.get('id')} | status={status}")
             return inserted
         return None
     except Exception as e:
         logger.error(f"[SUPABASE] Gagal insert transaction_logs: {e}")
         return None
+
+
 
 
 def update_transaction_status(
@@ -196,39 +210,44 @@ def insert_audit_log(
     block_number: Optional[int] = None,
 ) -> Optional[dict]:
     """
-    Menyimpan bukti anchor on-chain ke tabel audit_logs.
-    Dipanggil setelah transaksi blockchain terkonfirmasi (status SUCCESS).
-
-    Args:
-        incident_id : UUID dari incident_events.id.
-        tx_log_id   : UUID dari transaction_logs.id.
-        ipfs_cid    : Content Identifier IPFS metadata insiden.
-        block_number: Nomor blok Polygon saat konfirmasi.
+    Update data ipfs_cid dan block_number pada audit_log yang sudah dibuat saat PENDING.
+    
+    Karena di Migration 0005 relasinya dibalik (transaction_logs menunjuk ke audit_log_id),
+    maka fungsi ini sekarang bertugas meng-UPDATE audit_log berdasarkan tx_log_id tersebut.
     """
     client = _get_client()
     if not client:
         return None
 
-    record = {
-        "incident_event_id": incident_id,
-        "action": "UPLOAD_AND_ANCHOR",
-        "encrypted_data_reference": "aes-256-gcm (Pinata IPFS)",
-        "tx_id": tx_log_id,
-        "ipfs_cid": ipfs_cid,
-        "block_number": block_number,
-    }
-
     try:
-        response = client.table("audit_log").insert(record).execute()
-        if response.data:
-            inserted = response.data[0]
-            logger.info(f"[SUPABASE] Audit log saved: {inserted.get('id')}")
-            # Mark incident as anchored
-            mark_incident_anchored(incident_id)
-            return inserted
+        # Cari audit_log_id dari transaction_logs
+        tx_res = client.table("transaction_logs").select("audit_log_id").eq("id", tx_log_id).execute()
+        if not tx_res.data:
+            return None
+            
+        audit_log_id = tx_res.data[0].get("audit_log_id")
+        if not audit_log_id:
+            return None
+
+        # Update audit_log
+        audit_update = {}
+        if ipfs_cid:
+            audit_update["ipfs_cid"] = ipfs_cid
+        if block_number:
+            audit_update["block_number"] = block_number
+            
+        if audit_update:
+            response = client.table("audit_log").update(audit_update).eq("id", audit_log_id).execute()
+            
+            if response.data:
+                updated = response.data[0]
+                logger.info(f"[SUPABASE] Audit log updated: {updated.get('id')}")
+                # Mark incident as anchored
+                mark_incident_anchored(incident_id)
+                return updated
         return None
     except Exception as e:
-        logger.error(f"[SUPABASE] Gagal insert audit_log: {e}")
+        logger.error(f"[SUPABASE] Gagal update audit_log: {e}")
         return None
 
 

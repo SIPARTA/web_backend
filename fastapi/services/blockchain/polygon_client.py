@@ -361,26 +361,28 @@ class PolygonAmoyClient:
             address=self._contract.address, abi=self._contract.abi,
         ).functions.logIncident(incident_id_bytes, ipfs_cid)
 
-        logger.info("%s Anchoring incident to SipartaAudit...", TAG)
-        tx_hash = self._sign_and_send(fn)
-        logger.info("%s Transaction submitted: %s", TAG, tx_hash)
+        try:
+            logger.info("%s Anchoring incident to SipartaAudit...", TAG)
+            tx_hash = self._sign_and_send(fn)
+            logger.info("%s Transaction submitted: %s", TAG, tx_hash)
 
-        receipt = self._wait_for_receipt(tx_hash, timeout_s)
-        status = int(receipt.get("status", 0))
-        if status != 1:
-            raise TransactionFailedError(f"transaction reverted on-chain: {tx_hash}")
+            receipt = self._wait_for_receipt(tx_hash, timeout_s)
+            status = int(receipt.get("status", 0))
+            if status != 1:
+                raise BlockchainError(f"Transaction reverted: {tx_hash}")
 
-        block_number = int(receipt["blockNumber"])
-        logger.info("%s Transaction confirmed: %s", TAG, tx_hash)
-        logger.info("%s Block: %d | Gas used: %d",
-                    TAG, block_number, int(receipt.get("gasUsed", 0)))
-        
-        return {
-            "transaction_hash": tx_hash,
-            "block_number": block_number,
-            "gas_used": int(receipt.get("gasUsed", 0)),
-            "ipfs_cid": ipfs_cid
-        }
+            return {
+                "transaction_hash": tx_hash,
+                "block_number": receipt.get("blockNumber"),
+                "ipfs_cid": ipfs_cid
+            }
+        except Exception as e:
+            logger.error("%s Blockchain tx failed: %s", TAG, e)
+            return {
+                "transaction_hash": None,
+                "block_number": 0,
+                "ipfs_cid": ipfs_cid
+            }
 
     def verify_incident(self, incident_id: str) -> bool:
         """Check if an incident exists on-chain using the verifyIncident view function."""

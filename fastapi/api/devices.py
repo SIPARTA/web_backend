@@ -46,7 +46,7 @@ async def get_device_status():
     try:
         # Karena keterbatasan filter datetime di Supabase Python, kita ambil data devices lalu cek di memory
         # Atau bisa menggunakan raw RPC, tapi untuk saat ini mem-fetch lebih mudah
-        res = db.table("iot_devices").select("id, name, is_active, last_seen").execute()
+        res = db.table("iot_devices").select("id, name, is_active, last_seen, device_type").execute()
         devices = res.data or []
         
         from datetime import datetime, timezone, timedelta
@@ -72,7 +72,8 @@ async def get_device_status():
                 "id": dev.get("id"),
                 "name": dev.get("name"),
                 "is_active": dev_is_active,
-                "last_seen": last_seen_str
+                "last_seen": last_seen_str,
+                "device_type": dev.get("device_type", "real_iot")
             })
                     
         return {"online": is_online, "devices": device_list}

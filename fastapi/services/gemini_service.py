@@ -1,6 +1,8 @@
 import os
+import json
 import logging
 import google.generativeai as genai
+import re
 logger = logging.getLogger("siparta.gemini_service")
 
 _GEMINI_CONFIGURED = False
@@ -87,3 +89,53 @@ def analyze_incident_with_gemini(sensor_data: dict, image_path: str):
     except Exception as e:
         logger.error(f"[GEMINI] Gagal memanggil API: {e}")
         return fallback_msg
+
+def extract_sensor_data_from_image(image_path: str) -> dict:
+    """
+    Extracts sensor readings from a photo (e.g. from DroidCam) using Gemini OCR.
+    Returns a dict with mics5524, tgs2600, mq2, mq135 as floats.
+    """
+    logger.info("[GEMINI] Scraping sensor data dari gambar...")
+    _ensure_configured()
+    
+    if not image_path or not os.path.exists(image_path):
+        raise ValueError("Image path is invalid or does not exist.")
+        
+    try:
+        system_instruction = (
+            "Anda adalah asisten data extraction OCR. "
+            "Tugas Anda adalah membaca angka dari gambar layar (tegangan sensor gas). "
+            "Ada 4 sensor: MICS-5524, TGS2600, MQ-2, dan MQ-135. "
+            "Ekstrak nilai angka tegangan (biasanya format 0.00 hingga 5.00) untuk masing-masing sensor. "
+            "Kembalikan HANYA JSON block murni tanpa markdown, dengan format persis: "
+            "{\"mics5524\": float, \"tgs2600\": float, \"mq2\": float, \"mq135\": float}. "
+            "Jika Anda tidak bisa melihat angka tertentu, berikan nilai 0.0."
+        )
+        model = genai.GenerativeModel(
+            model_name='gemini-2.5-flash',
+            system_instruction=system_instruction
+        )
+        
+        sample_file = genai.upload_file(path=image_path, display_name="SIPARTA_Sensor_Screen")
+        prompt = "Ekstrak nilai keempat sensor tersebut dalam format JSON."
+        
+        response = model.generate_content([sample_file, prompt])
+        text_response = response.text.strip()
+        
+        # Bersihkan markdown HANYA JIKA ADA
+        text_response = re.sub(r'```(?:json)?', '', text_response).strip()
+        text_response = re.sub(r'```', '', text_response).strip()
+        
+        data = json.loads(text_response)
+        
+        # Validasi format
+        return {
+            "mics5524": float(data.get("mics5524", 0.0)),
+            "tgs2600": float(data.get("tgs2600", 0.0)),
+            "mq2": float(data.get("mq2", 0.0)),
+            "mq135": float(data.get("mq135", 0.0))
+        }
+    except Exception as e:
+        logger.error(f"[GEMINI] Gagal ekstrak data sensor dari gambar: {e}")
+        raise
+

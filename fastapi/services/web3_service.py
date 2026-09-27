@@ -49,7 +49,10 @@ async def log_incident_to_blockchain(payload: dict) -> dict:
         }
     except Exception as e:
         logger.error(f"[WEB3] Gagal anchoring incident: {e}")
-        return {"txHash": None, "blockNumber": 0, "mode": "error"}
+        # Try to extract ipfs_cid from exception if we threw it after pinata upload
+        # But polygon_client.py doesn't attach ipfs_cid to the exception.
+        # Let's modify polygon_client.py instead.
+        return {"txHash": None, "blockNumber": 0, "ipfsCid": None, "mode": "error"}
 
 async def verify_incident_on_chain(incident_uuid: str) -> bool:
     """

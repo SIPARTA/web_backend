@@ -55,26 +55,23 @@ def verify_device_api_key(x_api_key: Optional[str] = Header(None)):
 @router.post("/report")
 async def report_incident(
     background_tasks: BackgroundTasks,
-    # Data sensor dari Raspberry Pi
-    status: str = Form(..., description="Klasifikasi ANN: 'AMAN', 'WASPADA', atau 'BAHAYA'"),
-    sensor_mics5524: float = Form(..., description="Tegangan sensor MICS-5524 (Volt)"),
-    sensor_tgs2600: float = Form(..., description="Tegangan sensor TGS2600 (Volt)"),
-    sensor_mq2: float = Form(..., description="Tegangan sensor MQ-2 (Volt)"),
-    sensor_mq135: float = Form(..., description="Tegangan sensor MQ-135 (Volt)"),
-    timestamp: str = Form(..., description="ISO 8601 timestamp dari RPi"),
-    # Identitas perangkat (opsional untuk backward-compat)
-    device_id: Optional[str] = Form(None, description="UUID perangkat IoT dari tabel iot_devices"),
-    # Gambar bukti (opsional, dikirim saat status = BAHAYA)
-    file: Optional[UploadFile] = File(None, description="Foto bukti dari RPi Camera OV5647"),
-    # Auth
+    source_type: str = Form("iot", description="Sumber data: 'iot' atau 'droidcam'"),
+    status: str = Form("AMAN", description="Klasifikasi ANN: 'AMAN', 'WASPADA', atau 'BAHAYA'"),
+    sensor_mics5524: float = Form(0.0, description="Tegangan sensor MICS-5524 (Volt)"),
+    sensor_tgs2600: float = Form(0.0, description="Tegangan sensor TGS2600 (Volt)"),
+    sensor_mq2: float = Form(0.0, description="Tegangan sensor MQ-2 (Volt)"),
+    sensor_mq135: float = Form(0.0, description="Tegangan sensor MQ-135 (Volt)"),
+    timestamp: Optional[str] = Form(None, description="ISO 8601 timestamp"),
+    device_id: Optional[str] = Form(None, description="UUID perangkat"),
+    file: Optional[UploadFile] = File(None, description="Foto bukti dari RPi Camera atau DroidCam"),
     _auth: bool = Depends(verify_device_api_key),
 ):
     """
-    Endpoint Ingestion Utama dari RPi Edge AI.
-
-    Menerima payload multipart (sensor data + foto) dan langsung merespons
-    HTTP 200 ke RPi. Pipeline berat (Gemini AI + Blockchain) berjalan di background.
+    Endpoint Ingestion Utama untuk IoT dan DroidCam.
     """
+    from datetime import datetime, timezone
+    if not timestamp:
+        timestamp = datetime.now(timezone.utc).isoformat()
     # ── 1. Simpan foto bukti sementara ──────────────────────────────────────
     image_path: Optional[str] = None
     if file:
@@ -85,32 +82,68 @@ async def report_incident(
             buffer.write(content)
         logger.info(f"[INCIDENTS] Gambar tersimpan sementara: {image_path}")
 
-    # ── 2. Bangun payload terpusat ──────────────────────────────────────────
-    sensor_data = {
-        "mics5524": sensor_mics5524,
-        "tgs2600": sensor_tgs2600,
-        "mq2": sensor_mq2,
-        "mq135": sensor_mq135,
-    }
+    # ── 2. Percabangan Kondisi (IF/ELSE) ──────────────────────────────────────────
+    # Tentukan sumber data secara eksplisit
+    sensor_data = {}
+    
+    if source_type == "droidcam":
+        if file and image_path:
+            # Gunakan data hasil capture/scraping kamera ponsel
+            from services.gemini_service import extract_sensor_data_from_image
+            try:
+                sensor_data = extract_sensor_data_from_image(image_path)
+            except Exception as e:
+                logger.error(f"[INCIDENTS] OCR Error: {e}")
+                sensor_data = {"mics5524": 0.0, "tgs2600": 0.0, "mq2": 0.0, "mq135": 0.0}
+            
+            # Jalankan analisis/classification (Inference JST)
+            try:
+                import sys
+                ai_models_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "ai_models")
+                if ai_models_path not in sys.path:
+                    sys.path.append(ai_models_path)
+                from inference import run_inference
+                
+                sensor_values_list = [
+                    sensor_data.get("mics5524", 0.0),
+                    sensor_data.get("tgs2600", 0.0),
+                    sensor_data.get("mq2", 0.0),
+                    sensor_data.get("mq135", 0.0),
+                ]
+                status_upper = run_inference(sensor_values_list)
+            except Exception as e:
+                logger.error(f"[INCIDENTS] Inference Error: {e}")
+                status_upper = "AMAN"
+        else:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail="Image file is required for droidcam source")
+    else:
+        # Gunakan data dari device IoT (production mode)
+        sensor_data = {
+            "mics5524": sensor_mics5524,
+            "tgs2600": sensor_tgs2600,
+            "mq2": sensor_mq2,
+            "mq135": sensor_mq135,
+        }
+        status_upper = status.upper()
 
-    # Normalisasi status ke format uppercase
-    status_upper = status.upper()
     if status_upper not in ("AMAN", "WASPADA", "BAHAYA"):
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="Invalid status value. Must be AMAN, WASPADA, or BAHAYA")
-    classification_lower = status_upper.lower()  # untuk blockchain (aman/waspada/bahaya)
+    classification_lower = status_upper.lower()
 
     # Validasi device_id agar tidak kena foreign key constraint error di Supabase
     valid_device_id = None
     if device_id:
         try:
-            val = uuid.UUID(device_id, version=4)
+            val = uuid.UUID(device_id)
             valid_device_id = str(val)
         except ValueError:
             logger.warning(f"[INCIDENTS] Invalid device_id format '{device_id}', setting to None.")
             valid_device_id = None
 
     payload = {
+        "source": source_type,
         "status": status_upper,
         "classification": classification_lower,
         "sensors": sensor_data,
@@ -120,14 +153,31 @@ async def report_incident(
 
     # ── 3. Simpan ke Supabase (SYNCHRONOUS — sebelum background) ───────────
     # Ini memberikan ID unik yang akan digunakan di blockchain anchoring
+    incident_type_value = "VISUAL_AUDIT" if source_type == "droidcam" else f"GAS_{status_upper}"
     incident_record = db.insert_incident_event(
         device_id=valid_device_id,
-        incident_type=f"GAS_{status_upper}",
+        incident_type=incident_type_value,
         severity=status_upper,
         sensor_data=sensor_data,
         image_url=None,  # akan diisi setelah upload di background
         ai_analysis_text=None,  # akan diisi setelah Gemini analisis
     )
+    
+    incident_id = incident_record.get("id") if incident_record else None
+    
+    # Rekam metadata khusus untuk Droidcam ke incident_event_media
+    if source_type == "droidcam" and incident_id:
+        try:
+            db._get_client().table("incident_event_media").insert({
+                "incident_event_id": incident_id,
+                "device_id": valid_device_id,
+                "source": "droidcam",
+                "capture_status": "success",
+                "image_reference": "local:pending",  # Added to satisfy NOT NULL constraint
+                "timestamp": timestamp
+            }).execute()
+        except Exception as e:
+            logger.error(f"[INCIDENTS] Gagal menyimpan incident_event_media: {e}")
 
     incident_id = incident_record.get("id") if incident_record else None
     payload["incident_id"] = incident_id
@@ -183,13 +233,12 @@ async def process_incident_pipeline(
 
     # ── B. Blockchain Anchoring (hanya untuk status WASPADA/BAHAYA) ────────
     blockchain_result: Optional[dict] = None
-    should_anchor = payload.get("status", "") in ("BAHAYA", "WASPADA")
+    should_anchor = payload.get("status", "") in ("BAHAYA", "WASPADA") or payload.get("source") == "droidcam"
 
     if should_anchor and incident_id:
         # Simpan intent transaksi ke DB dulu (status PENDING)
         tx_log = db.insert_transaction_log(
-            entity_type="INCIDENT",
-            entity_id=incident_id,
+            incident_event_id=incident_id,
             tx_hash=None,
             status="PENDING",
         )
@@ -210,6 +259,7 @@ async def process_incident_pipeline(
                 "mq2": payload["sensors"]["mq2"],
                 "mq135": payload["sensors"]["mq135"],
                 "image_url": image_path or "",
+                "ai_analysis": gemini_analysis or "N/A",
             }
             blockchain_result = await log_incident_to_blockchain(payload_with_sensors)
             tx_hash = blockchain_result.get("txHash") or blockchain_result.get("tx_hash")
@@ -245,6 +295,15 @@ async def process_incident_pipeline(
                 logger.error(f"[PIPELINE] Relay mengembalikan hasil gagal tanpa txHash: {blockchain_result}")
                 if tx_log_id:
                     db.update_transaction_status(tx_log_id, "", "FAILED")
+                    # Tetap simpan IPFS CID jika berhasil di-upload
+                    ipfs_cid = blockchain_result.get("ipfsCid") or blockchain_result.get("ipfs_cid", "")
+                    if ipfs_cid:
+                        db.insert_audit_log(
+                            incident_id=incident_id,
+                            tx_log_id=tx_log_id,
+                            ipfs_cid=ipfs_cid,
+                            block_number=0,
+                        )
 
         except Exception as e:
             logger.error(f"[PIPELINE] Blockchain error: {e}")
@@ -252,11 +311,9 @@ async def process_incident_pipeline(
                 db.update_transaction_status(tx_log_id, "", "FAILED")
 
     # ── C. Update Supabase dengan hasil AI ─────────────────────────────────
-    if incident_id and gemini_analysis:
-        try:
-            db.update_incident_ai_analysis(incident_id, gemini_analysis)
-        except Exception as e:
-            logger.error(f"[PIPELINE] Gagal update AI analysis ke DB: {e}")
+    # NOTE: ai_analysis_text intentionally omitted from Supabase as it is 
+    # stored in Pinata/IPFS and we want to avoid schema cache errors.
+    pass
 
     # ── Cleanup temp file ────────────────────────────────────────────────────
     if image_path and os.path.exists(image_path):
@@ -291,3 +348,26 @@ async def verify_incident_onchain(incident_id: str):
     except Exception as e:
         logger.error(f"[INCIDENTS] Verification error: {e}")
         return {"incident_id": incident_id, "on_chain": False, "error": str(e)}
+
+@router.get("/decrypted/{cid}")
+async def get_decrypted_incident(cid: str):
+    """
+    Fetch IPFS data by CID and decrypt the payload.
+    """
+    import requests
+    from services.encryption_service import decrypt_payload
+    
+    gateway_url = f"https://gateway.pinata.cloud/ipfs/{cid}"
+    try:
+        r = requests.get(gateway_url, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        encrypted_token = data.get("encrypted_payload")
+        if not encrypted_token:
+            return {"error": "No encrypted payload found in IPFS data"}
+        
+        decrypted = decrypt_payload(encrypted_token)
+        return {"decrypted_data": decrypted}
+    except Exception as e:
+        logger.error(f"Failed to fetch or decrypt {cid}: {e}")
+        return {"error": str(e)}

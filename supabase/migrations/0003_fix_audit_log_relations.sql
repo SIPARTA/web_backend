@@ -36,5 +36,5 @@ BEGIN
 END $$;
 
 -- 5. Memperbaiki iot_devices (menambahkan field yang hilang dari skema aslinya)
-ALTER TABLE iot_devices ADD COLUMN IF NOT EXISTS user_id BIGINT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE iot_devices ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE iot_devices ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ;
