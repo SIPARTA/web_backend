@@ -85,13 +85,12 @@ def insert_incident_event(
         "incident_type": incident_type,
         "severity": severity,
         "status": severity,
+        "sensor_data": sensor_data,
         "image_url": image_url,
+        "ai_analysis_text": ai_analysis_text,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "is_anchored": False,
     }
-    # NOTE: sensor_data and ai_analysis_text are intentionally omitted
-    # because they do not exist in the current Supabase schema cache.
-    # They are still safely encrypted and stored in Pinata/IPFS.
 
     try:
         response = client.table("incident_events").insert(record).execute()
