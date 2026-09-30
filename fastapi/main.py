@@ -77,6 +77,8 @@ if allowed_origins_env:
     allowed_origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
 else:
     allowed_origins = [
+        "https://siparta.my.id",
+        "https://www.siparta.my.id",
         "https://siparta.id",
         "https://www.siparta.id",
         "https://siparta.vercel.app",

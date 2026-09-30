@@ -311,12 +311,9 @@ async def process_incident_pipeline(
                 db.update_transaction_status(tx_log_id, "", "FAILED")
 
     # ── C. Update Supabase dengan hasil AI ─────────────────────────────────
-    if gemini_analysis and incident_id:
-        try:
-            db.update_incident_ai_analysis(incident_id, gemini_analysis)
-            logger.info(f"[PIPELINE] AI analysis saved to DB for {incident_id}")
-        except Exception as e:
-            logger.error(f"[PIPELINE] Gagal update AI analysis ke DB: {e}")
+    # NOTE: ai_analysis_text intentionally omitted from Supabase as it is 
+    # stored in Pinata/IPFS and we want to avoid schema cache errors.
+    pass
 
     # ── Cleanup temp file ────────────────────────────────────────────────────
     if image_path and os.path.exists(image_path):
