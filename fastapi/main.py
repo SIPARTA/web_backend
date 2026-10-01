@@ -79,7 +79,6 @@ else:
     allowed_origins = [
         "https://siparta.my.id",
         "https://www.siparta.my.id",
-        "https://siparta.vercel.app",
         "http://localhost:3000"
     ]
 

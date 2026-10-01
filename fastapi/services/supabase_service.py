@@ -65,23 +65,33 @@ def insert_incident_event(
     """
     Menyimpan satu record insiden ke tabel incident_events.
 
-    Args:
-        device_id       : UUID perangkat IoT dari tabel iot_devices.
-        incident_type   : Klasifikasi insiden, e.g. 'GAS_LEAK', 'SAFE'.
-        severity        : Tingkat bahaya: 'AMAN', 'WASPADA', 'BAHAYA'.
-        sensor_data     : Dict berisi nilai sensor (mics5524, tgs2600, mq2, mq135).
-        image_url       : URL foto bukti (Supabase Storage / Cloudinary).
-        ai_analysis_text: Teks analisis mitigasi dari Google Gemini.
+    # Args:
+    #     device_id       : UUID perangkat IoT dari tabel iot_devices.
+    #     incident_type   : Klasifikasi insiden, e.g. 'GAS_LEAK', 'SAFE'.
+    #     severity        : Tingkat bahaya: 'AMAN', 'WASPADA', 'BAHAYA'.
+    #     sensor_data     : Dict berisi nilai sensor (mics5524, tgs2600, mq2, mq135).
+    #     image_url       : URL foto bukti (Supabase Storage / Cloudinary).
+    #     ai_analysis_text: Teks analisis mitigasi dari Google Gemini.
 
-    Returns:
-        Dict data yang berhasil di-insert, atau None jika gagal.
+    # Returns:
+    #     Dict data yang berhasil di-insert, atau None jika gagal.
     """
     client = _get_client()
     if not client:
         return None
 
+    user_id = None
+    if device_id:
+        try:
+            device_res = client.table("iot_devices").select("user_id").eq("id", device_id).execute()
+            if device_res.data and len(device_res.data) > 0:
+                user_id = device_res.data[0].get("user_id")
+        except Exception as e:
+            logger.error(f"[SUPABASE] Gagal ambil user_id dari device_id: {e}")
+
     record = {
         "device_id": device_id,
+        "user_id": user_id,
         "incident_type": incident_type,
         "severity": severity,
         "status": severity,
@@ -119,10 +129,10 @@ def insert_transaction_log(
     Mencatat intent transaksi blockchain baru dengan membuat record audit_log (pending) 
     terlebih dahulu, lalu merelasikan transaction_logs ke audit_log tersebut.
 
-    Args:
-        incident_event_id : UUID dari incident_events.id.
-        tx_hash           : Hash transaksi Polygon (bisa None jika masih PENDING).
-        status            : 'PENDING', 'SUCCESS', atau 'FAILED'.
+    # Args:
+    #     incident_event_id : UUID dari incident_events.id.
+    #     tx_hash           : Hash transaksi Polygon (bisa None jika masih PENDING).
+    #     status            : 'PENDING', 'SUCCESS', atau 'FAILED'.
 
     Returns:
         Dict data transaction_logs yang berhasil di-insert, atau None jika gagal.
@@ -132,6 +142,13 @@ def insert_transaction_log(
         return None
 
     try:
+        # Fetch user_id from incident_events
+        user_id = None
+        if incident_event_id:
+            incident_res = client.table("incident_events").select("user_id").eq("id", incident_event_id).execute()
+            if incident_res.data and len(incident_res.data) > 0:
+                user_id = incident_res.data[0].get("user_id")
+        
         # 1. Create audit_log first
         audit_res = client.table("audit_log").insert({
             "incident_event_id": incident_event_id,
@@ -144,12 +161,15 @@ def insert_transaction_log(
             
         audit_id = audit_res.data[0]["id"]
         
-        # 2. Create transaction_logs
-        tx_res = client.table("transaction_logs").insert({
+        # 2. Create transaction_logs (using table name "transactions_logs" if migration uses it)
+        # Note: Previous code used "transaction_logs" but the migration named it "transactions_logs"
+        # We should use "transactions_logs"
+        tx_res = client.table("transactions_logs").insert({
             "audit_log_id": audit_id,
             "tx_hash": tx_hash,
             "status": status,
             "retry_count": 0,
+            "user_id": user_id,
         }).execute()
 
         if tx_res.data:
@@ -158,7 +178,7 @@ def insert_transaction_log(
             return inserted
         return None
     except Exception as e:
-        logger.error(f"[SUPABASE] Gagal insert transaction_logs: {e}")
+        logger.error(f"[SUPABASE] Gagal insert transactions_logs: {e}")
         return None
 
 
@@ -185,7 +205,7 @@ def update_transaction_status(
 
     try:
         response = (
-            client.table("transaction_logs")
+            client.table("transactions_logs")
             .update(updates)
             .eq("id", tx_log_id)
             .execute()
@@ -195,7 +215,7 @@ def update_transaction_status(
             return response.data[0]
         return None
     except Exception as e:
-        logger.error(f"[SUPABASE] Gagal update transaction_logs: {e}")
+        logger.error(f"[SUPABASE] Gagal update transactions_logs: {e}")
         return None
 
 
@@ -274,3 +294,45 @@ def update_incident_ai_analysis(incident_id: str, ai_analysis_text: str) -> None
         logger.info(f"[SUPABASE] AI Analysis updated untuk incident {incident_id}.")
     except Exception as e:
         logger.error(f"[SUPABASE] Gagal update AI analysis ke DB: {e}")
+
+def check_device_web3_access(device_id: str) -> bool:
+    """
+    Memeriksa apakah user yang memiliki device ini memiliki akses Premium (Web3/MetaMask).
+    Premium diberikan jika user_id tersebut memiliki metamask_address, atau 
+    wallet_address-nya adalah address Web3 yang valid (bukan 'google:...' atau 'email:...').
+    """
+    if not device_id:
+        return False
+        
+    client = _get_client()
+    if not client:
+        return False
+        
+    try:
+        # Ambil user_id dari device
+        res = client.table("iot_devices").select("user_id").eq("id", device_id).execute()
+        if not res.data or not res.data[0].get("user_id"):
+            return False
+            
+        user_id = res.data[0]["user_id"]
+        
+        # Ambil wallet data dari user
+        u_res = client.table("users").select("wallet_address, metamask_address").eq("id", user_id).execute()
+        if not u_res.data:
+            return False
+            
+        u = u_res.data[0]
+        
+        # 1. Jika ada metamask_address (dari linked account), berarti Premium
+        if u.get("metamask_address"):
+            return True
+            
+        # 2. Jika wallet_address adalah alamat EVM (mulai dari 0x)
+        w = u.get("wallet_address") or ""
+        if w.startswith("0x"):
+            return True
+            
+        return False
+    except Exception as e:
+        logger.error(f"[SUPABASE] Error checking web3 access: {e}")
+        return False

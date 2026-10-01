@@ -233,7 +233,14 @@ async def process_incident_pipeline(
 
     # ── B. Blockchain Anchoring (hanya untuk status WASPADA/BAHAYA) ────────
     blockchain_result: Optional[dict] = None
-    should_anchor = payload.get("status", "") in ("BAHAYA", "WASPADA") or payload.get("source") == "droidcam"
+    
+    # PREMIUM TIER CHECK: Hanya proses blockchain jika perangkat dimiliki oleh user dengan akses Web3 (Premium)
+    has_web3_access = db.check_device_web3_access(payload.get("device_id"))
+    
+    should_anchor = has_web3_access and (payload.get("status", "") in ("BAHAYA", "WASPADA") or payload.get("source") == "droidcam")
+
+    if not has_web3_access:
+        logger.info(f"[PIPELINE] Skipping Web3/IPFS for device {payload.get('device_id')} (Standard Tier)")
 
     if should_anchor and incident_id:
         # Simpan intent transaksi ke DB dulu (status PENDING)
