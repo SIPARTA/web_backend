@@ -7,9 +7,10 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from api import incidents, devices, camera
+from api import incidents, devices, camera, predict
 from core.config import settings
 from services.supabase_service import _get_client as get_supabase_client
+from services.ai_service import load_ai_models, is_ai_loaded
 
 logger = logging.getLogger("siparta")
 
@@ -49,6 +50,9 @@ async def monitor_device_status():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Validasi credential kritis saat server startup."""
+    # Load AI Models (JST)
+    load_ai_models()
+    
     missing = settings.validate()
     if missing:
         logger.warning(f"[STARTUP] ⚠️  Missing env vars: {', '.join(missing)}")
@@ -94,6 +98,7 @@ app.add_middleware(
 app.include_router(incidents.router, prefix="/api/v1")
 app.include_router(devices.router, prefix="/api/v1")
 app.include_router(camera.router, prefix="/api/v1")
+app.include_router(predict.router, prefix="/api/v1")
 
 
 @app.get("/")
@@ -124,3 +129,39 @@ def health_check(response: Response):
         
     return health_status
 
+
+@app.get("/api/v1/system-status")
+def system_status():
+    """Endpoint untuk mendapatkan status integrasi AI & Perangkat (Real-time dashboard)."""
+    db = get_supabase_client()
+    
+    # 1. AI JST Status
+    ai_jst_status = is_ai_loaded()
+    
+    # 2. Gemini AI Status
+    gemini_status = bool(settings.GEMINI_API_KEY)
+    
+    # 3 & 4. Devices Status
+    iot_production_status = False
+    droidcam_testing_status = False
+    
+    try:
+        if db:
+            res = db.table("iot_devices").select("id, device_type").eq("is_active", True).execute()
+            active_devices = res.data or []
+            for dev in active_devices:
+                # device_type in DB could be 'iot', 'droidcam' or maybe 'camera'
+                dt = dev.get("device_type")
+                if dt == "iot" or dt == "sensor":
+                    iot_production_status = True
+                elif dt == "droidcam" or dt == "camera":
+                    droidcam_testing_status = True
+    except Exception as e:
+        logger.error(f"[SYSTEM-STATUS] Error fetching devices: {e}")
+        
+    return {
+        "ai_jst": "online" if ai_jst_status else "offline",
+        "gemini_ai": "online" if gemini_status else "offline",
+        "iot_production": "online" if iot_production_status else "offline",
+        "droidcam_testing": "online" if droidcam_testing_status else "offline",
+    }

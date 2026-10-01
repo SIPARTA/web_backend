@@ -161,10 +161,8 @@ def insert_transaction_log(
             
         audit_id = audit_res.data[0]["id"]
         
-        # 2. Create transaction_logs (using table name "transactions_logs" if migration uses it)
-        # Note: Previous code used "transaction_logs" but the migration named it "transactions_logs"
-        # We should use "transactions_logs"
-        tx_res = client.table("transactions_logs").insert({
+        # 2. Create transaction_logs
+        tx_res = client.table("transaction_logs").insert({
             "audit_log_id": audit_id,
             "tx_hash": tx_hash,
             "status": status,
@@ -178,7 +176,7 @@ def insert_transaction_log(
             return inserted
         return None
     except Exception as e:
-        logger.error(f"[SUPABASE] Gagal insert transactions_logs: {e}")
+        logger.error(f"[SUPABASE] Gagal insert transaction_logs: {e}")
         return None
 
 
@@ -205,7 +203,7 @@ def update_transaction_status(
 
     try:
         response = (
-            client.table("transactions_logs")
+            client.table("transaction_logs")
             .update(updates)
             .eq("id", tx_log_id)
             .execute()
@@ -215,7 +213,7 @@ def update_transaction_status(
             return response.data[0]
         return None
     except Exception as e:
-        logger.error(f"[SUPABASE] Gagal update transactions_logs: {e}")
+        logger.error(f"[SUPABASE] Gagal update transaction_logs: {e}")
         return None
 
 
@@ -298,8 +296,7 @@ def update_incident_ai_analysis(incident_id: str, ai_analysis_text: str) -> None
 def check_device_web3_access(device_id: str) -> bool:
     """
     Memeriksa apakah user yang memiliki device ini memiliki akses Premium (Web3/MetaMask).
-    Premium diberikan jika user_id tersebut memiliki metamask_address, atau 
-    wallet_address-nya adalah address Web3 yang valid (bukan 'google:...' atau 'email:...').
+    Premium diberikan jika wallet_address-nya adalah address Web3 yang valid (bukan 'google:...' atau 'email:...').
     """
     if not device_id:
         return False
@@ -317,17 +314,13 @@ def check_device_web3_access(device_id: str) -> bool:
         user_id = res.data[0]["user_id"]
         
         # Ambil wallet data dari user
-        u_res = client.table("users").select("wallet_address, metamask_address").eq("id", user_id).execute()
+        u_res = client.table("users").select("wallet_address").eq("id", user_id).execute()
         if not u_res.data:
             return False
             
         u = u_res.data[0]
         
-        # 1. Jika ada metamask_address (dari linked account), berarti Premium
-        if u.get("metamask_address"):
-            return True
-            
-        # 2. Jika wallet_address adalah alamat EVM (mulai dari 0x)
+        # Jika wallet_address adalah alamat EVM (mulai dari 0x)
         w = u.get("wallet_address") or ""
         if w.startswith("0x"):
             return True
