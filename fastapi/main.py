@@ -104,10 +104,16 @@ app.include_router(predict.router, prefix="/api/v1")
 
 @app.get("/")
 def read_root():
+    import sys
+    import tensorflow as tf
     return {
         "status": "Online",
         "message": "Welcome to SIPARTA Backend API! Engine is running.",
-        "services": ["Supabase", "Gemini AI", "Thirdweb Blockchain"]
+        "services": ["Supabase", "Gemini AI", "Thirdweb Blockchain"],
+        "debug": {
+            "python_version": sys.version,
+            "tensorflow_version": tf.__version__
+        }
     }
 
 
