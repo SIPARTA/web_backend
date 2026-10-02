@@ -155,7 +155,7 @@ def system_status():
         error_msg = f"Gagal memuat artefak model ke dalam memory (RAM). Error: {ai_service.ai_load_error}"
 
     ai_jst_info = {
-        "name": "SIPARTA ANN Sensor Classification",
+        "name": "AI JST",
         "version": "v1.0 (siparta_ann.h5)",
         "deployment_status": "deployed" if model_exists else "not_deployed",
         "model_loaded": "loaded" if ai_jst_loaded else "failed",
@@ -167,7 +167,7 @@ def system_status():
     # 2. Dataset Status
     dataset_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "ai_models/siparta_sensor_dataset.csv"))
     dataset_info = {
-        "name": "SIPARTA Real Sensor Dataset",
+        "name": "Sensor Dataset",
         "source": "Local CSV (/ai_models)",
         "availability": "unverified",
         "sample_count": None,
