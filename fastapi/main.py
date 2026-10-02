@@ -165,7 +165,7 @@ def system_status():
     }
     
     # 2. Dataset Status
-    dataset_path = os.path.join(os.path.dirname(__file__), "data/siparta_sensor_dataset.csv")
+    dataset_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../ai_models/siparta_sensor_dataset.csv"))
     dataset_info = {
         "name": "SIPARTA Real Sensor Dataset",
         "source": "Local CSV (/ai_models)",
