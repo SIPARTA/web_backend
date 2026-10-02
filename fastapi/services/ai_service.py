@@ -12,15 +12,18 @@ SCALER_PATH = os.path.join(os.path.dirname(__file__), "../models/siparta_scaler.
 
 ann_model = None
 scaler = None
+ai_load_error = None
 
 def load_ai_models():
     """Called once at startup to load models into memory"""
-    global ann_model, scaler
+    global ann_model, scaler, ai_load_error
     try:
         ann_model = tf.keras.models.load_model(MODEL_PATH)
         scaler = joblib.load(SCALER_PATH)
+        ai_load_error = None
         logger.info("✅ [AI Service] JST Model & Scaler successfully loaded into memory!")
     except Exception as e:
+        ai_load_error = str(e)
         logger.error(f"❌ [AI Service] Failed to load model: {e}")
 
 def predict_gas_risk(features: list) -> dict:

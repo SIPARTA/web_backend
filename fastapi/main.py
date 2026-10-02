@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api import incidents, devices, camera, predict
 from core.config import settings
 from services.supabase_service import _get_client as get_supabase_client
-from services.ai_service import load_ai_models, is_ai_loaded
+from services.ai_service import load_ai_models, is_ai_loaded, ai_load_error, MODEL_PATH
 
 logger = logging.getLogger("siparta")
 
@@ -139,19 +139,26 @@ def system_status():
     
     # 1. AI JST Status
     ai_jst_loaded = is_ai_loaded()
+    model_exists = os.path.exists(MODEL_PATH)
     
+    error_msg = None
+    if not model_exists:
+        error_msg = f"File model tidak ditemukan di: {MODEL_PATH}"
+    elif not ai_jst_loaded:
+        error_msg = f"Gagal memuat artefak model ke dalam memory (RAM). Error: {ai_load_error}"
+
     ai_jst_info = {
         "name": "SIPARTA ANN Sensor Classification",
         "version": "v1.0 (siparta_ann.keras)",
-        "deployment_status": "deployed",
+        "deployment_status": "deployed" if model_exists else "not_deployed",
         "model_loaded": "loaded" if ai_jst_loaded else "failed",
         "inference_readiness": "ready" if ai_jst_loaded else "not_ready",
         "last_checked": now_iso,
-        "error_message": None if ai_jst_loaded else "Gagal memuat artefak model ke dalam memory (RAM)."
+        "error_message": error_msg
     }
     
     # 2. Dataset Status
-    dataset_path = os.path.join(os.path.dirname(__file__), "../../ai_models/siparta_sensor_dataset.csv")
+    dataset_path = os.path.join(os.path.dirname(__file__), "data/siparta_sensor_dataset.csv")
     dataset_info = {
         "name": "SIPARTA Real Sensor Dataset",
         "source": "Local CSV (/ai_models)",
