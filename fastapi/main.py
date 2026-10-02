@@ -156,7 +156,7 @@ def system_status():
 
     ai_jst_info = {
         "name": "AI JST",
-        "version": "v1.0 (siparta_ann.h5)",
+        "version": "v1.0 (siparta_ann.keras)",
         "deployment_status": "deployed" if model_exists else "not_deployed",
         "model_loaded": "loaded" if ai_jst_loaded else "failed",
         "inference_readiness": "ready" if ai_jst_loaded else "not_ready",
@@ -165,7 +165,7 @@ def system_status():
     }
     
     # 2. Dataset Status
-    dataset_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "ai_models/siparta_sensor_dataset.csv"))
+    dataset_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../ai_models/siparta_sensor_dataset.csv"))
     dataset_info = {
         "name": "Sensor Dataset",
         "source": "Local CSV (/ai_models)",
