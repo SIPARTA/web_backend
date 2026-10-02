@@ -17,14 +17,21 @@ ai_load_error = None
 def load_ai_models():
     """Called once at startup to load models into memory"""
     global ann_model, scaler, ai_load_error
+    if ann_model is not None and scaler is not None:
+        return
+        
     try:
+        logger.info(f"⏳ [AI Service] Loading JST Model from {MODEL_PATH}...")
         ann_model = tf.keras.models.load_model(MODEL_PATH)
+        logger.info(f"⏳ [AI Service] Loading Scaler from {SCALER_PATH}...")
         scaler = joblib.load(SCALER_PATH)
         ai_load_error = None
         logger.info("✅ [AI Service] JST Model & Scaler successfully loaded into memory!")
     except Exception as e:
-        ai_load_error = str(e)
-        logger.error(f"❌ [AI Service] Failed to load model: {e}")
+        import traceback
+        error_details = traceback.format_exc()
+        ai_load_error = f"{str(e)} | Details: {error_details}"
+        logger.error(f"❌ [AI Service] Failed to load model: {error_details}")
 
 def predict_gas_risk(features: list) -> dict:
     """
@@ -66,4 +73,6 @@ def predict_gas_risk(features: list) -> dict:
 def is_ai_loaded() -> bool:
     """Returns True if the AI models are successfully loaded in memory."""
     global ann_model, scaler
+    if ann_model is None or scaler is None:
+        load_ai_models()
     return ann_model is not None and scaler is not None
