@@ -6,7 +6,19 @@ import logging
 
 logger = logging.getLogger("siparta.ai_service")
 
-MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../models"))
+# Tentukan Path Model berdasarkan Single Source of Truth
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))) # SIPARTA root
+AI_MODELS_DIR = os.path.join(BASE_DIR, "ai_models", "model")
+LOCAL_MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../models"))
+
+# Cek apakah arsitektur ai_models tersedia (Development / Monorepo)
+if os.path.exists(AI_MODELS_DIR) and os.path.exists(os.path.join(AI_MODELS_DIR, "siparta_ann.h5")):
+    MODELS_DIR = AI_MODELS_DIR
+    logger.info(f"[AI Service] Terintegrasi dengan ai_models: {MODELS_DIR}")
+else:
+    MODELS_DIR = LOCAL_MODELS_DIR
+    logger.info(f"[AI Service] Menggunakan local fallback directory: {MODELS_DIR}")
+
 MODEL_PATH = os.path.join(MODELS_DIR, "siparta_ann.h5")
 SCALER_PATH = os.path.join(MODELS_DIR, "siparta_scaler.pkl")
 

@@ -164,8 +164,15 @@ def system_status():
         "error_message": error_msg
     }
     
-    # 2. Dataset Status
-    dataset_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "models/siparta_sensor_dataset.csv"))
+    # Tentukan Path Dataset (Single Source of Truth)
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))) # SIPARTA root
+    ai_models_dataset = os.path.join(base_dir, "ai_models", "siparta_sensor_dataset.csv")
+    local_dataset = os.path.abspath(os.path.join(os.path.dirname(__file__), "models/siparta_sensor_dataset.csv"))
+    
+    if os.path.exists(ai_models_dataset):
+        dataset_path = ai_models_dataset
+    else:
+        dataset_path = local_dataset
     dataset_info = {
         "name": "Sensor Dataset",
         "source": "CSV",
