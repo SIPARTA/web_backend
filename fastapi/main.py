@@ -10,7 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from api import incidents, devices, camera, predict
 from core.config import settings
 from services.supabase_service import _get_client as get_supabase_client
-from services.ai_service import load_ai_models, is_ai_loaded, ai_load_error, MODEL_PATH
+from services.ai_service import load_ai_models, is_ai_loaded, MODEL_PATH
+import services.ai_service as ai_service
 
 logger = logging.getLogger("siparta")
 
@@ -145,7 +146,7 @@ def system_status():
     if not model_exists:
         error_msg = f"File model tidak ditemukan di: {MODEL_PATH}"
     elif not ai_jst_loaded:
-        error_msg = f"Gagal memuat artefak model ke dalam memory (RAM). Error: {ai_load_error}"
+        error_msg = f"Gagal memuat artefak model ke dalam memory (RAM). Error: {ai_service.ai_load_error}"
 
     ai_jst_info = {
         "name": "SIPARTA ANN Sensor Classification",
