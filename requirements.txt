@@ -8,7 +8,7 @@ web3>=6.11.1
 supabase>=2.3.0
 requests>=2.31.0
 
-tensorflow-cpu>=2.15.0
+tensorflow-cpu>=2.17.0
 scikit-learn
 joblib
 numpy
