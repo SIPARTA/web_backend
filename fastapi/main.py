@@ -133,35 +133,70 @@ def health_check(response: Response):
 @app.get("/api/v1/system-status")
 def system_status():
     """Endpoint untuk mendapatkan status integrasi AI & Perangkat (Real-time dashboard)."""
-    db = get_supabase_client()
+    from datetime import datetime, timezone
+    
+    now_iso = datetime.now(timezone.utc).isoformat()
     
     # 1. AI JST Status
-    ai_jst_status = is_ai_loaded()
+    ai_jst_loaded = is_ai_loaded()
     
-    # 2. Gemini AI Status
-    gemini_status = bool(settings.GEMINI_API_KEY)
+    ai_jst_info = {
+        "name": "SIPARTA ANN Sensor Classification",
+        "version": "v1.0 (siparta_ann.keras)",
+        "deployment_status": "deployed",
+        "model_loaded": "loaded" if ai_jst_loaded else "failed",
+        "inference_readiness": "ready" if ai_jst_loaded else "not_ready",
+        "last_checked": now_iso,
+        "error_message": None if ai_jst_loaded else "Gagal memuat artefak model ke dalam memory (RAM)."
+    }
     
-    # 3 & 4. Devices Status
-    iot_production_status = False
-    droidcam_testing_status = False
+    # 2. Dataset Status
+    dataset_path = os.path.join(os.path.dirname(__file__), "../../ai_models/siparta_sensor_dataset.csv")
+    dataset_info = {
+        "name": "SIPARTA Real Sensor Dataset",
+        "source": "Local CSV (/ai_models)",
+        "availability": "unverified",
+        "sample_count": None,
+        "feature_count": None,
+        "version_or_updated": None,
+        "preprocessing_match": "unverified",
+        "last_checked": now_iso,
+        "error_message": None
+    }
     
-    try:
-        if db:
-            res = db.table("iot_devices").select("id, device_type").eq("is_active", True).execute()
-            active_devices = res.data or []
-            for dev in active_devices:
-                # device_type in DB could be 'iot', 'droidcam' or maybe 'camera'
-                dt = dev.get("device_type")
-                if dt == "iot" or dt == "sensor":
-                    iot_production_status = True
-                elif dt == "droidcam" or dt == "camera":
-                    droidcam_testing_status = True
-    except Exception as e:
-        logger.error(f"[SYSTEM-STATUS] Error fetching devices: {e}")
+    if os.path.exists(dataset_path):
+        try:
+            # We don't want to load all 3000 rows into memory on every ping, just get info
+            import csv
+            
+            with open(dataset_path, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                header = next(reader)
+                rows_count = sum(1 for _ in reader)
+                
+            dataset_info["availability"] = "available"
+            dataset_info["sample_count"] = rows_count
+            dataset_info["feature_count"] = len(header) - 1 if "Status" in header else len(header)
+            
+            mtime = os.path.getmtime(dataset_path)
+            dataset_info["version_or_updated"] = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+            
+            expected_features = {"mics5524", "tgs2600", "mq2", "mq135"}
+            cols_lower = set(col.lower() for col in header)
+            if expected_features.issubset(cols_lower):
+                dataset_info["preprocessing_match"] = "matched"
+            else:
+                dataset_info["preprocessing_match"] = "unmatched"
+                dataset_info["error_message"] = f"Fitur tidak lengkap. Dibutuhkan: {expected_features}"
+                
+        except Exception as e:
+            dataset_info["availability"] = "unavailable"
+            dataset_info["error_message"] = f"Error membaca dataset: {e}"
+    else:
+        dataset_info["availability"] = "unavailable"
+        dataset_info["error_message"] = "File dataset siparta_sensor_dataset.csv tidak ditemukan di direktori ai_models."
         
     return {
-        "ai_jst": "online" if ai_jst_status else "offline",
-        "gemini_ai": "online" if gemini_status else "offline",
-        "iot_production": "online" if iot_production_status else "offline",
-        "droidcam_testing": "online" if droidcam_testing_status else "offline",
+        "ai_jst": ai_jst_info,
+        "dataset": dataset_info
     }
