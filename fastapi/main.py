@@ -7,9 +7,11 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from api import incidents, devices, camera
+from api import incidents, devices, camera, predict
 from core.config import settings
 from services.supabase_service import _get_client as get_supabase_client
+from services.ai_service import load_ai_models, is_ai_loaded, MODEL_PATH
+import services.ai_service as ai_service
 
 logger = logging.getLogger("siparta")
 
@@ -49,6 +51,9 @@ async def monitor_device_status():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Validasi credential kritis saat server startup."""
+    # Load AI Models (JST)
+    load_ai_models()
+    
     missing = settings.validate()
     if missing:
         logger.warning(f"[STARTUP] ⚠️  Missing env vars: {', '.join(missing)}")
@@ -77,9 +82,8 @@ if allowed_origins_env:
     allowed_origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
 else:
     allowed_origins = [
-        "https://siparta.id",
-        "https://www.siparta.id",
-        "https://siparta.vercel.app",
+        "https://siparta.my.id",
+        "https://www.siparta.my.id",
         "http://localhost:3000"
     ]
 
@@ -95,14 +99,21 @@ app.add_middleware(
 app.include_router(incidents.router, prefix="/api/v1")
 app.include_router(devices.router, prefix="/api/v1")
 app.include_router(camera.router, prefix="/api/v1")
+app.include_router(predict.router, prefix="/api/v1")
 
 
 @app.get("/")
 def read_root():
+    import sys
+    import tensorflow as tf
     return {
         "status": "Online",
         "message": "Welcome to SIPARTA Backend API! Engine is running.",
-        "services": ["Supabase", "Gemini AI", "Thirdweb Blockchain"]
+        "services": ["Supabase", "Gemini AI", "Thirdweb Blockchain"],
+        "debug": {
+            "python_version": sys.version,
+            "tensorflow_version": tf.__version__
+        }
     }
 
 
@@ -125,3 +136,81 @@ def health_check(response: Response):
         
     return health_status
 
+
+@app.get("/api/v1/system-status")
+def system_status():
+    """Endpoint untuk mendapatkan status integrasi AI & Perangkat (Real-time dashboard)."""
+    from datetime import datetime, timezone
+    
+    now_iso = datetime.now(timezone.utc).isoformat()
+    
+    # 1. AI JST Status
+    ai_jst_loaded = is_ai_loaded()
+    model_exists = os.path.exists(MODEL_PATH)
+    
+    error_msg = None
+    if not model_exists:
+        error_msg = f"File model tidak ditemukan di: {MODEL_PATH}"
+    elif not ai_jst_loaded:
+        error_msg = f"Gagal memuat artefak model ke dalam memory (RAM). Error: {ai_service.ai_load_error}"
+
+    ai_jst_info = {
+        "name": "AI JST",
+        "version": "v1.0 (siparta_ann.h5)",
+        "deployment_status": "deployed" if model_exists else "not_deployed",
+        "model_loaded": "loaded" if ai_jst_loaded else "failed",
+        "inference_readiness": "ready" if ai_jst_loaded else "not_ready",
+        "last_checked": now_iso,
+        "error_message": error_msg
+    }
+    
+    # 2. Dataset Status
+    dataset_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "ai_models/siparta_sensor_dataset.csv"))
+    dataset_info = {
+        "name": "Sensor Dataset",
+        "source": "Local CSV (/ai_models)",
+        "availability": "unverified",
+        "sample_count": None,
+        "feature_count": None,
+        "version_or_updated": None,
+        "preprocessing_match": "unverified",
+        "last_checked": now_iso,
+        "error_message": None
+    }
+    
+    if os.path.exists(dataset_path):
+        try:
+            # We don't want to load all 3000 rows into memory on every ping, just get info
+            import csv
+            
+            with open(dataset_path, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                header = next(reader)
+                rows_count = sum(1 for _ in reader)
+                
+            dataset_info["availability"] = "available"
+            dataset_info["sample_count"] = rows_count
+            dataset_info["feature_count"] = len(header) - 1 if "Status" in header else len(header)
+            
+            mtime = os.path.getmtime(dataset_path)
+            dataset_info["version_or_updated"] = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+            
+            expected_features = {"mics5524", "tgs2600", "mq2", "mq135"}
+            cols_lower = set(col.lower() for col in header)
+            if expected_features.issubset(cols_lower):
+                dataset_info["preprocessing_match"] = "matched"
+            else:
+                dataset_info["preprocessing_match"] = "unmatched"
+                dataset_info["error_message"] = f"Fitur tidak lengkap. Dibutuhkan: {expected_features}"
+                
+        except Exception as e:
+            dataset_info["availability"] = "unavailable"
+            dataset_info["error_message"] = f"Error membaca dataset: {e}"
+    else:
+        dataset_info["availability"] = "unavailable"
+        dataset_info["error_message"] = "File dataset siparta_sensor_dataset.csv tidak ditemukan di direktori ai_models."
+        
+    return {
+        "ai_jst": ai_jst_info,
+        "dataset": dataset_info
+    }

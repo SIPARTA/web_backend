@@ -46,7 +46,7 @@ def analyze_incident_with_gemini(sensor_data: dict, image_path: str):
         )
 
         model = genai.GenerativeModel(
-            model_name='gemini-2.5-flash',
+            model_name='gemini-3.8-flash',
             system_instruction=system_instruction
         )
         
@@ -112,7 +112,7 @@ def extract_sensor_data_from_image(image_path: str) -> dict:
             "Jika Anda tidak bisa melihat angka tertentu, berikan nilai 0.0."
         )
         model = genai.GenerativeModel(
-            model_name='gemini-2.5-flash',
+            model_name='gemini-3.8-flash',
             system_instruction=system_instruction
         )
         

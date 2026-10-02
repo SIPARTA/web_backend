@@ -82,8 +82,7 @@ async def report_incident(
             buffer.write(content)
         logger.info(f"[INCIDENTS] Gambar tersimpan sementara: {image_path}")
 
-    # ── 2. Percabangan Kondisi (IF/ELSE) ──────────────────────────────────────────
-    # Tentukan sumber data secara eksplisit
+    # ── 2. Percabangan Kondisi (IF/ELSE) dan AI Inference ─────────────────────
     sensor_data = {}
     
     if source_type == "droidcam":
@@ -95,25 +94,6 @@ async def report_incident(
             except Exception as e:
                 logger.error(f"[INCIDENTS] OCR Error: {e}")
                 sensor_data = {"mics5524": 0.0, "tgs2600": 0.0, "mq2": 0.0, "mq135": 0.0}
-            
-            # Jalankan analisis/classification (Inference JST)
-            try:
-                import sys
-                ai_models_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "ai_models")
-                if ai_models_path not in sys.path:
-                    sys.path.append(ai_models_path)
-                from inference import run_inference
-                
-                sensor_values_list = [
-                    sensor_data.get("mics5524", 0.0),
-                    sensor_data.get("tgs2600", 0.0),
-                    sensor_data.get("mq2", 0.0),
-                    sensor_data.get("mq135", 0.0),
-                ]
-                status_upper = run_inference(sensor_values_list)
-            except Exception as e:
-                logger.error(f"[INCIDENTS] Inference Error: {e}")
-                status_upper = "AMAN"
         else:
             from fastapi import HTTPException
             raise HTTPException(status_code=400, detail="Image file is required for droidcam source")
@@ -125,11 +105,32 @@ async def report_incident(
             "mq2": sensor_mq2,
             "mq135": sensor_mq135,
         }
-        status_upper = status.upper()
+
+    # JST Inference (Single Source of Truth di Backend)
+    from services.ai_service import predict_gas_risk, is_ai_loaded
+    try:
+        if not is_ai_loaded():
+            logger.warning("[INCIDENTS] Model AI JST belum dimuat, mencoba memuat saat runtime.")
+            from services.ai_service import load_ai_models
+            load_ai_models()
+            
+        features_list = [
+            sensor_data.get("mics5524", 0.0),
+            sensor_data.get("tgs2600", 0.0),
+            sensor_data.get("mq2", 0.0),
+            sensor_data.get("mq135", 0.0),
+        ]
+        
+        prediction = predict_gas_risk(features_list)
+        status_upper = prediction.get("status", "AMAN")
+        logger.info(f"[INCIDENTS] Backend AI Inference: {status_upper} (Confidence: {prediction.get('confidence')}%)")
+    except Exception as e:
+        logger.error(f"[INCIDENTS] Backend Inference Error: {e}")
+        status_upper = "AMAN"
 
     if status_upper not in ("AMAN", "WASPADA", "BAHAYA"):
-        from fastapi import HTTPException
-        raise HTTPException(status_code=400, detail="Invalid status value. Must be AMAN, WASPADA, or BAHAYA")
+        status_upper = "AMAN"
+        
     classification_lower = status_upper.lower()
 
     # Validasi device_id agar tidak kena foreign key constraint error di Supabase
@@ -233,7 +234,14 @@ async def process_incident_pipeline(
 
     # ── B. Blockchain Anchoring (hanya untuk status WASPADA/BAHAYA) ────────
     blockchain_result: Optional[dict] = None
-    should_anchor = payload.get("status", "") in ("BAHAYA", "WASPADA") or payload.get("source") == "droidcam"
+    
+    # PREMIUM TIER CHECK: Hanya proses blockchain jika perangkat dimiliki oleh user dengan akses Web3 (Premium)
+    has_web3_access = db.check_device_web3_access(payload.get("device_id"))
+    
+    should_anchor = has_web3_access and (payload.get("status", "") in ("BAHAYA", "WASPADA") or payload.get("source") == "droidcam")
+
+    if not has_web3_access:
+        logger.info(f"[PIPELINE] Skipping Web3/IPFS for device {payload.get('device_id')} (Standard Tier)")
 
     if should_anchor and incident_id:
         # Simpan intent transaksi ke DB dulu (status PENDING)
@@ -311,12 +319,9 @@ async def process_incident_pipeline(
                 db.update_transaction_status(tx_log_id, "", "FAILED")
 
     # ── C. Update Supabase dengan hasil AI ─────────────────────────────────
-    if gemini_analysis and incident_id:
-        try:
-            db.update_incident_ai_analysis(incident_id, gemini_analysis)
-            logger.info(f"[PIPELINE] AI analysis saved to DB for {incident_id}")
-        except Exception as e:
-            logger.error(f"[PIPELINE] Gagal update AI analysis ke DB: {e}")
+    # NOTE: ai_analysis_text intentionally omitted from Supabase as it is 
+    # stored in Pinata/IPFS and we want to avoid schema cache errors.
+    pass
 
     # ── Cleanup temp file ────────────────────────────────────────────────────
     if image_path and os.path.exists(image_path):
