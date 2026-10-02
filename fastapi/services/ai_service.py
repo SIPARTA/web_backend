@@ -14,6 +14,17 @@ ann_model = None
 scaler = None
 ai_load_error = None
 
+class SafeDense(tf.keras.layers.Dense):
+    """
+    A custom wrapper around Dense to safely ignore 'quantization_config'
+    when loading Keras 3 models in Keras 2 (TF 2.15) environments.
+    """
+    @classmethod
+    def from_config(cls, config):
+        if 'quantization_config' in config:
+            del config['quantization_config']
+        return super().from_config(config)
+
 def load_ai_models():
     """Called once at startup to load models into memory"""
     global ann_model, scaler, ai_load_error
@@ -22,7 +33,17 @@ def load_ai_models():
         
     try:
         logger.info(f"⏳ [AI Service] Loading JST Model from {MODEL_PATH}...")
-        ann_model = tf.keras.models.load_model(MODEL_PATH)
+        
+        try:
+            ann_model = tf.keras.models.load_model(MODEL_PATH)
+        except Exception as e_primary:
+            if "quantization_config" in str(e_primary):
+                logger.warning(f"⚠️ [AI Service] Fallback to SafeDense scope due to Keras 3 artifact error.")
+                with tf.keras.utils.custom_object_scope({'Dense': SafeDense}):
+                    ann_model = tf.keras.models.load_model(MODEL_PATH)
+            else:
+                raise e_primary
+
         logger.info(f"⏳ [AI Service] Loading Scaler from {SCALER_PATH}...")
         scaler = joblib.load(SCALER_PATH)
         ai_load_error = None
