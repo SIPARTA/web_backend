@@ -31,3 +31,4 @@ pip-delete-this-directory.txt
 .DS_Store
 Thumbs.db
 /tmp/
+\n# Whitelist models\n!fastapi/models/*.keras\n!fastapi/models/*.pkl\n!fastapi/models/*.csv

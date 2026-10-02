@@ -6,9 +6,9 @@ import logging
 
 logger = logging.getLogger("siparta.ai_service")
 
-AI_MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../ai_models"))
-MODEL_PATH = os.path.join(AI_MODELS_DIR, "model/siparta_ann.keras")
-SCALER_PATH = os.path.join(AI_MODELS_DIR, "model/siparta_scaler.pkl")
+MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../models"))
+MODEL_PATH = os.path.join(MODELS_DIR, "siparta_ann.keras")
+SCALER_PATH = os.path.join(MODELS_DIR, "siparta_scaler.pkl")
 
 ann_model = None
 scaler = None
