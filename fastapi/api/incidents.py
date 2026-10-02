@@ -109,11 +109,6 @@ async def report_incident(
     # JST Inference (Single Source of Truth di Backend)
     from services.ai_service import predict_gas_risk, is_ai_loaded
     try:
-        if not is_ai_loaded():
-            logger.warning("[INCIDENTS] Model AI JST belum dimuat, mencoba memuat saat runtime.")
-            from services.ai_service import load_ai_models
-            load_ai_models()
-            
         features_list = [
             sensor_data.get("mics5524", 0.0),
             sensor_data.get("tgs2600", 0.0),
@@ -121,15 +116,25 @@ async def report_incident(
             sensor_data.get("mq135", 0.0),
         ]
         
-        prediction = predict_gas_risk(features_list)
-        status_upper = prediction.get("status", "AMAN")
-        logger.info(f"[INCIDENTS] Backend AI Inference: {status_upper} (Confidence: {prediction.get('confidence')}%)")
+        # Validasi: Jika semua sensor bernilai eksak 0.0, asumsikan sensor terputus / offline
+        if all(v == 0.0 for v in features_list):
+            logger.warning("[INCIDENTS] Seluruh sensor membaca 0.0. Perangkat mungkin offline atau sensor terputus.")
+            status_upper = "DATA_UNAVAILABLE"
+        else:
+            if not is_ai_loaded():
+                logger.warning("[INCIDENTS] Model AI JST belum dimuat, mencoba memuat saat runtime.")
+                from services.ai_service import load_ai_models
+                load_ai_models()
+                
+            prediction = predict_gas_risk(features_list)
+            status_upper = prediction.get("status", "MODEL_ERROR")
+            logger.info(f"[INCIDENTS] Backend AI Inference: {status_upper} (Confidence: {prediction.get('confidence', 0.0)}%)")
     except Exception as e:
         logger.error(f"[INCIDENTS] Backend Inference Error: {e}")
-        status_upper = "AMAN"
+        status_upper = "MODEL_ERROR"
 
-    if status_upper not in ("AMAN", "WASPADA", "BAHAYA"):
-        status_upper = "AMAN"
+    if status_upper not in ("AMAN", "WASPADA", "BAHAYA", "DATA_UNAVAILABLE", "MODEL_ERROR"):
+        status_upper = "MODEL_ERROR"
         
     classification_lower = status_upper.lower()
 

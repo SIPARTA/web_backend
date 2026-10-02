@@ -83,7 +83,7 @@ def predict_gas_risk(features: list) -> dict:
             1: "WASPADA",
             2: "BAHAYA"
         }
-        status = risk_labels.get(predicted_class, "AMAN")
+        status = risk_labels.get(predicted_class, "MODEL_ERROR")
         
         return {
             "status": status,
