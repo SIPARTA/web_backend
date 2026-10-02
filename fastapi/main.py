@@ -168,7 +168,7 @@ def system_status():
     dataset_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "models/siparta_sensor_dataset.csv"))
     dataset_info = {
         "name": "Sensor Dataset",
-        "source": "Local CSV (/fastapi/models)",
+        "source": "CSV",
         "availability": "unverified",
         "sample_count": None,
         "feature_count": None,
