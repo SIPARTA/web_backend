@@ -165,16 +165,7 @@ def system_status():
     }
     
     # 2. Dataset Status
-    def get_ai_models_dir_main():
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        for _ in range(5):
-            potential_path = os.path.join(current_dir, "ai_models")
-            if os.path.exists(potential_path) and os.path.isdir(potential_path):
-                return potential_path
-            current_dir = os.path.dirname(current_dir)
-        return os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../ai_models"))
-    
-    dataset_path = os.path.join(get_ai_models_dir_main(), "siparta_sensor_dataset.csv")
+    dataset_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "ai_models/siparta_sensor_dataset.csv"))
     dataset_info = {
         "name": "SIPARTA Real Sensor Dataset",
         "source": "Local CSV (/ai_models)",

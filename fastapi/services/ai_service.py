@@ -6,16 +6,7 @@ import logging
 
 logger = logging.getLogger("siparta.ai_service")
 
-def get_ai_models_dir():
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    for _ in range(5): # search up to 5 levels up
-        potential_path = os.path.join(current_dir, "ai_models")
-        if os.path.exists(potential_path) and os.path.isdir(potential_path):
-            return potential_path
-        current_dir = os.path.dirname(current_dir)
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../ai_models"))
-
-AI_MODELS_DIR = get_ai_models_dir()
+AI_MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../ai_models"))
 MODEL_PATH = os.path.join(AI_MODELS_DIR, "model/siparta_ann.h5")
 SCALER_PATH = os.path.join(AI_MODELS_DIR, "model/siparta_scaler.pkl")
 
