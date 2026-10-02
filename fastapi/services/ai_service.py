@@ -7,7 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Initialize global variables
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "../models/siparta_ann.keras")
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "../models/siparta_ann.h5")
 SCALER_PATH = os.path.join(os.path.dirname(__file__), "../models/siparta_scaler.pkl")
 
 ann_model = None

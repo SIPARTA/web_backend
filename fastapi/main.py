@@ -156,7 +156,7 @@ def system_status():
 
     ai_jst_info = {
         "name": "SIPARTA ANN Sensor Classification",
-        "version": "v1.0 (siparta_ann.keras)",
+        "version": "v1.0 (siparta_ann.h5)",
         "deployment_status": "deployed" if model_exists else "not_deployed",
         "model_loaded": "loaded" if ai_jst_loaded else "failed",
         "inference_readiness": "ready" if ai_jst_loaded else "not_ready",
