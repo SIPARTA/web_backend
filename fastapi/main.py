@@ -165,7 +165,7 @@ def system_status():
     }
     
     # Tentukan Path Dataset (Single Source of Truth)
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))) # SIPARTA root
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) # SIPARTA root
     ai_models_dataset = os.path.join(base_dir, "ai_models", "siparta_sensor_dataset.csv")
     local_dataset = os.path.abspath(os.path.join(os.path.dirname(__file__), "models/siparta_sensor_dataset.csv"))
     
