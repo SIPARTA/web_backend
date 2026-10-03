@@ -50,10 +50,10 @@ async def report_incident(
     background_tasks: BackgroundTasks,
     source_type: str = Form("iot", description="Sumber data: 'iot' atau 'droidcam'"),
     status: str = Form("AMAN", description="Klasifikasi ANN: 'AMAN', 'WASPADA', atau 'BAHAYA'"),
-    adc_mics5524: float = Form(0.0, description="Nilai ADC sensor MICS-5524"),
-    adc_tgs2600: float = Form(0.0, description="Nilai ADC sensor TGS2600"),
-    adc_mq2: float = Form(0.0, description="Nilai ADC sensor MQ-2"),
-    adc_mq135: float = Form(0.0, description="Nilai ADC sensor MQ-135"),
+    sensor_mics5524: float = Form(0.0, description="Nilai ADC sensor MICS-5524"),
+    sensor_tgs2600: float = Form(0.0, description="Nilai ADC sensor TGS2600"),
+    sensor_mq2: float = Form(0.0, description="Nilai ADC sensor MQ-2"),
+    sensor_mq135: float = Form(0.0, description="Nilai ADC sensor MQ-135"),
     timestamp: Optional[str] = Form(None, description="ISO 8601 timestamp"),
     device_id: Optional[str] = Form(None, description="UUID perangkat"),
     file: Optional[UploadFile] = File(None, description="Foto bukti dari RPi Camera atau DroidCam"),
@@ -84,16 +84,16 @@ async def report_incident(
                 sensor_data = extract_sensor_data_from_image(image_path)
             except Exception as e:
                 logger.error(f"[INCIDENTS] OCR Error: {e}")
-                sensor_data = {"adc_mics5524": 0.0, "adc_tgs2600": 0.0, "adc_mq2": 0.0, "adc_mq135": 0.0}
+                sensor_data = {"mics5524": 0.0, "tgs2600": 0.0, "mq2": 0.0, "mq135": 0.0}
         else:
             from fastapi import HTTPException
             raise HTTPException(status_code=400, detail="Image file is required for droidcam source")
     else:
         sensor_data = {
-            "adc_mics5524": adc_mics5524,
-            "adc_tgs2600": adc_tgs2600,
-            "adc_mq2": adc_mq2,
-            "adc_mq135": adc_mq135,
+            "mics5524": sensor_mics5524,
+            "tgs2600": sensor_tgs2600,
+            "mq2": sensor_mq2,
+            "mq135": sensor_mq135,
         }
 
     from services.ai_service import predict_gas_risk, is_ai_loaded
@@ -104,10 +104,10 @@ async def report_incident(
             load_ai_models()
             
         features_list = [
-            sensor_data.get("adc_mics5524", 0.0),
-            sensor_data.get("adc_tgs2600", 0.0),
-            sensor_data.get("adc_mq2", 0.0),
-            sensor_data.get("adc_mq135", 0.0),
+            sensor_data.get("mics5524", 0.0),
+            sensor_data.get("tgs2600", 0.0),
+            sensor_data.get("mq2", 0.0),
+            sensor_data.get("mq135", 0.0),
         ]
         
         prediction = predict_gas_risk(features_list)
@@ -237,10 +237,10 @@ async def process_incident_pipeline(
             payload_with_sensors = {
                 **payload,
                 "incident_id": incident_id,
-                "mics5524": payload["sensors"].get("adc_mics5524", 0.0),
-                "tgs2600": payload["sensors"].get("adc_tgs2600", 0.0),
-                "mq2": payload["sensors"].get("adc_mq2", 0.0),
-                "mq135": payload["sensors"].get("adc_mq135", 0.0),
+                "mics5524": payload["sensors"].get("mics5524", 0.0),
+                "tgs2600": payload["sensors"].get("tgs2600", 0.0),
+                "mq2": payload["sensors"].get("mq2", 0.0),
+                "mq135": payload["sensors"].get("mq135", 0.0),
                 "image_url": image_path or "",
                 "ai_analysis": gemini_analysis or "N/A",
             }
