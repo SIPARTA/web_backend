@@ -7,7 +7,7 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from api import incidents, devices, camera, predict
+from api import incidents, devices, camera, predict, simulation
 from core.config import settings
 from services.supabase_service import _get_client as get_supabase_client
 from services.ai_service import load_ai_models, is_ai_loaded, MODEL_PATH
@@ -100,6 +100,7 @@ app.include_router(incidents.router, prefix="/api/v1")
 app.include_router(devices.router, prefix="/api/v1")
 app.include_router(camera.router, prefix="/api/v1")
 app.include_router(predict.router, prefix="/api/v1")
+app.include_router(simulation.router, prefix="/api/v1")
 
 
 @app.get("/")
