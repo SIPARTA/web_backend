@@ -75,8 +75,8 @@ def predict_gas_risk(features: list) -> dict:
         
     try:
         # Preprocessing (Konsisten dengan Notebook)
-        # Clamping input to 0.0 - 5.0
-        clamped_features = [max(0.0, min(5.0, v)) for v in features]
+        # Clamping input to 0.0 - 65535.0 (RAW ADC)
+        clamped_features = [max(0.0, min(65535.0, v)) for v in features]
         input_data = np.array(clamped_features, dtype=np.float32).reshape(1, -1)
         
         # Scaling

@@ -10,10 +10,10 @@ logger = logging.getLogger("siparta")
 router = APIRouter()
 
 class SensorDataInput(BaseModel):
-    mics5524: float
-    tgs2600: float
-    mq2: float
-    mq135: float
+    adc_mics5524: float
+    adc_tgs2600: float
+    adc_mq2: float
+    adc_mq135: float
 
 @router.post("/predict", tags=["AI Prediction"])
 async def predict_risk(data: SensorDataInput):
@@ -23,10 +23,10 @@ async def predict_risk(data: SensorDataInput):
     """
     try:
         features = [
-            data.mics5524,
-            data.tgs2600,
-            data.mq2,
-            data.mq135
+            data.adc_mics5524,
+            data.adc_tgs2600,
+            data.adc_mq2,
+            data.adc_mq135
         ]
         
         result = predict_gas_risk(features)

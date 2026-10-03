@@ -64,10 +64,10 @@ def analyze_incident_with_gemini(sensor_data: dict, image_path: str):
         *Catatan: Nilai di atas 2.0V mengindikasikan kehadiran gas secara signifikan.
         
         [DATA PEMBACAAN SENSOR SAAT INI (Tegangan Output ADC)]
-        - MICS-5524 : {sensor_data['sensors'].get('mics5524', 0)} Volt
-        - TGS2600   : {sensor_data['sensors'].get('tgs2600', 0)} Volt
-        - MQ-2      : {sensor_data['sensors'].get('mq2', 0)} Volt
-        - MQ-135    : {sensor_data['sensors'].get('mq135', 0)} Volt
+        - MICS-5524 : {sensor_data['sensors'].get('adc_mics5524', 0)} ADC
+        - TGS2600   : {sensor_data['sensors'].get('adc_tgs2600', 0)} ADC
+        - MQ-2      : {sensor_data['sensors'].get('adc_mq2', 0)} ADC
+        - MQ-135    : {sensor_data['sensors'].get('adc_mq135', 0)} ADC
         
         Tugas Anda:
         1. Analisis gambar terlampir (foto lokasi kejadian) jika relevan. Adakah asap tebal, sumber api, atau hal mencurigakan? (Jangan berasumsi berlebihan jika gambar gelap/kabur, andalkan data sensor).
@@ -106,9 +106,9 @@ def extract_sensor_data_from_image(image_path: str) -> dict:
             "Anda adalah asisten data extraction OCR. "
             "Tugas Anda adalah membaca angka dari gambar layar (tegangan sensor gas). "
             "Ada 4 sensor: MICS-5524, TGS2600, MQ-2, dan MQ-135. "
-            "Ekstrak nilai angka tegangan (biasanya format 0.00 hingga 5.00) untuk masing-masing sensor. "
+            "Ekstrak nilai angka (nilai ADC) untuk masing-masing sensor. "
             "Kembalikan HANYA JSON block murni tanpa markdown, dengan format persis: "
-            "{\"mics5524\": float, \"tgs2600\": float, \"mq2\": float, \"mq135\": float}. "
+            "{\"adc_mics5524\": float, \"adc_tgs2600\": float, \"adc_mq2\": float, \"adc_mq135\": float}. "
             "Jika Anda tidak bisa melihat angka tertentu, berikan nilai 0.0."
         )
         model = genai.GenerativeModel(
@@ -130,10 +130,10 @@ def extract_sensor_data_from_image(image_path: str) -> dict:
         
         # Validasi format
         return {
-            "mics5524": float(data.get("mics5524", 0.0)),
-            "tgs2600": float(data.get("tgs2600", 0.0)),
-            "mq2": float(data.get("mq2", 0.0)),
-            "mq135": float(data.get("mq135", 0.0))
+            "adc_mics5524": float(data.get("adc_mics5524", 0.0)),
+            "adc_tgs2600": float(data.get("adc_tgs2600", 0.0)),
+            "adc_mq2": float(data.get("adc_mq2", 0.0)),
+            "adc_mq135": float(data.get("adc_mq135", 0.0))
         }
     except Exception as e:
         logger.error(f"[GEMINI] Gagal ekstrak data sensor dari gambar: {e}")

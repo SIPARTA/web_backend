@@ -166,8 +166,8 @@ def system_status():
     
     # Tentukan Path Dataset (Single Source of Truth)
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) # SIPARTA root
-    ai_models_dataset = os.path.join(base_dir, "ai_models", "siparta_sensor_dataset.csv")
-    local_dataset = os.path.abspath(os.path.join(os.path.dirname(__file__), "models/siparta_sensor_dataset.csv"))
+    ai_models_dataset = os.path.join(base_dir, "ai_models", "Dataset Sensor SIPARTA.csv")
+    local_dataset = os.path.abspath(os.path.join(os.path.dirname(__file__), "models/Dataset Sensor SIPARTA.csv"))
     
     if os.path.exists(ai_models_dataset):
         dataset_path = ai_models_dataset
@@ -202,7 +202,7 @@ def system_status():
             mtime = os.path.getmtime(dataset_path)
             dataset_info["version_or_updated"] = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
             
-            expected_features = {"mics5524", "tgs2600", "mq2", "mq135"}
+            expected_features = {"adc_mics5524", "adc_tgs2600", "adc_mq2", "adc_mq135"}
             cols_lower = set(col.lower() for col in header)
             if expected_features.issubset(cols_lower):
                 dataset_info["preprocessing_match"] = "matched"
@@ -215,7 +215,7 @@ def system_status():
             dataset_info["error_message"] = f"Error membaca dataset: {e}"
     else:
         dataset_info["availability"] = "unavailable"
-        dataset_info["error_message"] = "File dataset siparta_sensor_dataset.csv tidak ditemukan di direktori ai_models."
+        dataset_info["error_message"] = "File dataset 'Dataset Sensor SIPARTA.csv' tidak ditemukan di direktori ai_models."
         
     return {
         "ai_jst": ai_jst_info,
