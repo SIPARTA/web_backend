@@ -44,6 +44,61 @@ class SafeDense(tf.keras.layers.Dense):
                     del init_config['output_axes']
         return super().from_config(config)
 
+
+class SafeBatchNormalization(tf.keras.layers.BatchNormalization):
+    """
+    Wrapper untuk BatchNormalization yang menangani perbedaan config antara
+    Keras 3 (TF ≥2.16) dan Keras 2 legacy (TF ≤2.15).
+
+    Keras 3 menyimpan parameter: 'synchronized', 'renorm', 'renorm_clipping',
+    'renorm_momentum' ke dalam config JSON model (.h5/.keras).
+    Keras 2 legacy tidak mengenali parameter tersebut → TypeError saat
+    deserialisasi.
+
+    Wrapper ini HANYA membuang parameter yang tidak dikenali, tanpa mengubah
+    arsitektur atau bobot layer BatchNormalization.
+    """
+    # Parameter Keras 3 yang tidak ada di Keras 2
+    _KERAS3_ONLY_KEYS = {
+        'synchronized', 'renorm', 'renorm_clipping', 'renorm_momentum'
+    }
+
+    @classmethod
+    def from_config(cls, config):
+        # Deteksi parameter asing dengan introspeksi parent __init__
+        import inspect
+        parent_init_params = set(
+            inspect.signature(tf.keras.layers.BatchNormalization.__init__).parameters.keys()
+        )
+
+        cleaned_config = {}
+        removed_keys = []
+        for key, value in config.items():
+            if key in parent_init_params or key in ('name', 'trainable', 'dtype'):
+                cleaned_config[key] = value
+            elif key in cls._KERAS3_ONLY_KEYS:
+                removed_keys.append(key)
+                # Tidak di-include, tapi di-log
+            else:
+                # Parameter tidak dikenal dan bukan dari daftar Keras 3 yang diketahui
+                # Tetap masukkan agar error aslinya tetap muncul (jangan sembunyikan)
+                cleaned_config[key] = value
+
+        if removed_keys:
+            logger.info(
+                f"[SafeBatchNormalization] Stripped Keras 3-only keys "
+                f"not supported by runtime: {removed_keys}"
+            )
+
+        # Handle 'dtype' DTypePolicy format dari Keras 3
+        if 'dtype' in cleaned_config:
+            dtype_val = cleaned_config['dtype']
+            if isinstance(dtype_val, dict) and 'config' in dtype_val:
+                cleaned_config['dtype'] = dtype_val['config'].get('name', 'float32')
+
+        return super().from_config(cleaned_config)
+
+
 def load_ai_models():
     """Called once at startup to load models into memory"""
     global ann_model, scaler, ai_load_error
@@ -52,7 +107,11 @@ def load_ai_models():
         
     try:
         logger.info(f"⏳ [AI Service] Loading JST Model from {MODEL_PATH}...")
-        with tf.keras.utils.custom_object_scope({'Dense': SafeDense}):
+        custom_objects = {
+            'Dense': SafeDense,
+            'BatchNormalization': SafeBatchNormalization,
+        }
+        with tf.keras.utils.custom_object_scope(custom_objects):
             ann_model = tf.keras.models.load_model(MODEL_PATH)
 
         logger.info(f"⏳ [AI Service] Loading Scaler from {SCALER_PATH}...")
